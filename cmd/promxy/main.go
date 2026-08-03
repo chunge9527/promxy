@@ -545,7 +545,10 @@ func main() {
 		logrus.Fatalf("Invalid AccessLogDestination: %s", opts.AccessLogDestination)
 	}
 
-	srv, err := server.CreateAndStart(opts.BindAddr, opts.LogFormat, opts.WebReadTimeout, accessLogOut, middleware.NewProxyHeaders(r, opts.ProxyHeaders), opts.WebConfigFile)
+	// Create tag middleware that only applies to PromQL query API endpoints
+	tagMiddleware := middleware.NewTagParser(middleware.NewProxyHeaders(r, opts.ProxyHeaders))
+
+	srv, err := server.CreateAndStart(opts.BindAddr, opts.LogFormat, opts.WebReadTimeout, accessLogOut, tagMiddleware, opts.WebConfigFile)
 	if err != nil {
 		logrus.Fatalf("Error creating server: %v", err)
 	}

@@ -45,6 +45,12 @@ type Config struct {
 	Ordinal int `yaml:"-"`
 	// Name is an optional human-readable identifier for this server group.
 	Name string `yaml:"name,omitempty"`
+	// TagFilters is a list of tags used to filter this server group during queries.
+	// Tags from URL parameter `query_tag` or Header `X-Query-Tag` will be matched against these tags.
+	// A server group will be selected if any of the incoming tags matches any of these tags.
+	TagFilters []string `yaml:"tag_filters,omitempty"`
+	// ========== 新增缓存字段，yaml忽略不序列化 ==========
+	AllTagFilters []string `yaml:"-"`
 	// RemoteRead directs promxy to load RAW data (meaning matrix selectors such as `foo[1h]`)
 	// through the RemoteRead API on prom.
 	// Pros:
@@ -322,6 +328,8 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
+	// ========= 新增：配置加载完成，预计算缓存tags =========
+	c.AllTagFilters = buildAllTags(c.Name, c.TagFilters)
 	return nil
 }
 
@@ -487,4 +495,25 @@ type NativeHistogramConfig struct {
 	//     accept the fidelity loss (e.g. dashboards that only consume
 	//     histogram_quantile output and don't care about sparse spans).
 	AllowLossy bool `yaml:"allow_lossy,omitempty"`
+}
+
+// buildAllTags 计算完整标签集合（name + tag_filters，去重、过滤空值）
+func buildAllTags(name string, tagFilters []string) []string {
+	tagMap := make(map[string]bool)
+	// Add name as a tag if it's not empty
+	if name != "" {
+		tagMap[name] = true
+	}
+	// Add all tags from TagFilters
+	for _, tag := range tagFilters {
+		if tag != "" {
+			tagMap[tag] = true
+		}
+	}
+	// Convert map to slice
+	tags := make([]string, 0, len(tagMap))
+	for t := range tagMap {
+		tags = append(tags, t)
+	}
+	return tags
 }

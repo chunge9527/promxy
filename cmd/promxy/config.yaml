@@ -48,6 +48,8 @@ promxy:
       # exposed as the `name` label on the server_group_targets metric. The
       # group's ordinal is always included regardless of whether a name is set.
       name: primary-cluster
+      tag_filters:
+        - default
 
       # labels to be added to metrics retrieved from this server_group
       labels:

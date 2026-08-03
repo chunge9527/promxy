@@ -164,7 +164,9 @@ func (p *ProxyStorage) ApplyConfig(c *proxyconfig.Config) error {
 		return err
 	}
 
-	newState.client = promclient.NewTimeTruncate(multiApi)
+	// Wrap the multiAPI with tag filtering
+	tagFilterAPI := newTagFilterAPI(newState.sgs, multiApi)
+	newState.client = promclient.NewTimeTruncate(tagFilterAPI)
 
 	// Check for remote_write (for appender)
 	if c.PromConfig.RemoteWriteConfigs != nil {
