@@ -56,7 +56,7 @@ func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API 
 	logrus.Debugf("[tag] input tags: %v, total server groups: %d", reqTags, len(t.sgs))
 
 	var filteredAPIs []promclient.API
-
+	var matchedNames []string
 	for _, sg := range t.sgs {
 		sgTags := sg.Cfg.AllTagFilters
 
@@ -71,12 +71,12 @@ func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API 
 
 		if match {
 			filteredAPIs = append(filteredAPIs, sg)
-			logrus.Infof("[tag] matched server group: %s, tags: %v", sg.Cfg.Name, sgTags)
+			matchedNames = append(matchedNames, sg.Cfg.Name)
 		}
 	}
 
-	logrus.Debugf("[tag] matched %d server groups out of %d", len(filteredAPIs), len(t.sgs))
-
+	logrus.Infof("server groups: %d, matched:  %d, matched names: %v",
+		len(t.sgs), len(filteredAPIs), matchedNames)
 	return filteredAPIs
 }
 

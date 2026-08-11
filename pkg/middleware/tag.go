@@ -11,13 +11,13 @@ type tagContextKey int
 
 const (
 	// requestTagsKey is used to store the parsed tags in request context
-	requestTagsKey tagContextKey = 1
+	requestTagsKey     tagContextKey = iota
+	queryKeyRouteTags                = "routeTags"
+	tagLinkParam                     = "region"
+	headerKeyRouteTags               = "X-ROUTE-TAGS"
+	// defaultTag is the fallback tag used when no tags are provided
+	defaultTag = "default"
 )
-
-// defaultTag is the fallback tag used when no tags are provided
-const defaultTag = "default"
-
-const tagLinkParam = "region"
 
 // TagParser is a middleware that parses tags from URL query parameter or HTTP header
 type TagParser struct {
@@ -33,20 +33,30 @@ func NewTagParser(next http.Handler) *TagParser {
 
 // ServeHTTP implements http.Handler
 func (t *TagParser) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var tagValue string
 
-	// Get original values for logging
-	urlTag := r.URL.Query().Get("routeTags")
+	// 1. 优先读取 URL Query: routeTags -> region
+	urlTag := r.URL.Query().Get(queryKeyRouteTags)
 	if len(urlTag) == 0 {
 		urlTag = r.URL.Query().Get(tagLinkParam)
 	}
-	headerTag := r.Header.Get("X-ROUTE-TAGS")
+	tagValue = urlTag
 
-	// Priority: URL parameter > Header
-	tagValue := ""
-	if urlTag != "" {
-		tagValue = urlTag
-	} else if headerTag != "" {
-		tagValue = headerTag
+	// 2. Query无值，并且是可携带表单的请求方法，才解析POST Form
+	if len(tagValue) == 0 && (r.Method == http.MethodPost || r.Method == http.MethodPut) {
+		// 解析 application/x-www-form-urlencoded 表单
+		err := r.ParseForm()
+		if err == nil { // 解析成功才去读取表单
+			formTag := r.PostForm.Get(queryKeyRouteTags)
+			if len(formTag) == 0 {
+				formTag = r.PostForm.Get(tagLinkParam)
+			}
+			tagValue = formTag
+		}
+	}
+	// 3. 表单仍然无值，读取Header
+	if len(tagValue) == 0 {
+		tagValue = r.Header.Get(headerKeyRouteTags)
 	}
 
 	// Parse and clean tags
@@ -55,7 +65,6 @@ func (t *TagParser) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// If no tags provided, use default tag
 	if len(tags) == 0 {
 		tags = []string{defaultTag}
-		tagValue = defaultTag
 	}
 
 	// Store tags in context
@@ -65,7 +74,7 @@ func (t *TagParser) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // parseTags parses a comma-separated tag string and returns a cleaned slice of tags
 func parseTags(tagString string) []string {
-	if tagString == "" {
+	if len(tagString) == 0 {
 		return nil
 	}
 
