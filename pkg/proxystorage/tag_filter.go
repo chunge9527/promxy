@@ -31,19 +31,14 @@ func newTagFilterAPI(sgs []*servergroup.ServerGroup, multiAPI *promclient.MultiA
 	}
 }
 
-// filterServerGroups filters server groups based on tags from context
-// Matching rule: if any tag from the request matches any tag in the server group's GetAllTags(),
+// FilterServerGroupsByTags filters server groups based on request tags.
+// Matching rule: if any tag from reqTags matches any tag in the server group's AllTagFilters,
 // the server group is included. Matching is case-insensitive.
-func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API {
-	reqTags := middleware.GetRequestTags(ctx)
-
+// 返回匹配的 ServerGroup 列表（可能为空，无匹配时返回 nil）。
+func FilterServerGroupsByTags(sgs []*servergroup.ServerGroup, reqTags []string) []*servergroup.ServerGroup {
 	if len(reqTags) == 0 {
 		// No tags in context, return all server groups
-		apis := make([]promclient.API, len(t.sgs))
-		for i, sg := range t.sgs {
-			apis[i] = sg
-		}
-		return apis
+		return sgs
 	}
 
 	// Build a map of request tags for quick lookup (case-insensitive)
@@ -52,12 +47,11 @@ func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API 
 		reqTagMap[strings.ToLower(tag)] = true
 	}
 
-	// Log debug information
-	logrus.Debugf("[tag] input tags: %v, total server groups: %d", reqTags, len(t.sgs))
+	logrus.Debugf("[tag] input tags: %v, total server groups: %d", reqTags, len(sgs))
 
-	var filteredAPIs []promclient.API
+	var filtered []*servergroup.ServerGroup
 	var matchedNames []string
-	for _, sg := range t.sgs {
+	for _, sg := range sgs {
 		sgTags := sg.Cfg.AllTagFilters
 
 		// Check if any tag matches (case-insensitive)
@@ -70,14 +64,29 @@ func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API 
 		}
 
 		if match {
-			filteredAPIs = append(filteredAPIs, sg)
+			filtered = append(filtered, sg)
 			matchedNames = append(matchedNames, sg.Cfg.Name)
 		}
 	}
 
-	logrus.Infof("server groups: %d, matched:  %d, matched names: %v",
-		len(t.sgs), len(filteredAPIs), matchedNames)
-	return filteredAPIs
+	logrus.Infof("[tag] server groups: %d, matched: %d, matched names: %v",
+		len(sgs), len(filtered), matchedNames)
+	return filtered
+}
+
+// filterServerGroups filters server groups based on tags from context
+// Matching rule: if any tag from the request matches any tag in the server group's GetAllTags(),
+// the server group is included. Matching is case-insensitive.
+func (t *tagFilterAPI) filterServerGroups(ctx context.Context) []promclient.API {
+	reqTags := middleware.GetRequestTags(ctx)
+	filtered := FilterServerGroupsByTags(t.sgs, reqTags)
+
+	// 转换为 promclient.API 列表
+	apis := make([]promclient.API, len(filtered))
+	for i, sg := range filtered {
+		apis[i] = sg
+	}
+	return apis
 }
 
 // getFilteredMultiAPI returns a MultiAPI with filtered server groups

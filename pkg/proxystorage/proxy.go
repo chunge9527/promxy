@@ -33,6 +33,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/jacksontj/promxy/pkg/logging"
+	"github.com/jacksontj/promxy/pkg/middleware"
 
 	proxyconfig "github.com/jacksontj/promxy/pkg/config"
 	"github.com/jacksontj/promxy/pkg/promapi"
@@ -458,6 +459,57 @@ func vectorToStepMatrix(vec storage.SeriesSet, start, end time.Time, step time.D
 //   - offsets within the subtree must match: if they don't then we'll get mismatched data, so we wait until we are far enough down the tree that they converge
 //   - Don't reduce accuracy/granularity: the intention of this is to get the correct data faster, meaning correctness overrules speed.
 func (p *ProxyStorage) NodeReplacer(ctx context.Context, s *parser.EvalStmt, node parser.Node, path []parser.Node) (parser.Node, error) {
+
+	// ===== 整查询下推：当 tag 过滤后只剩 1 个 ServerGroup 时，跳过 PromQL Engine 内存计算，
+	// 直接将完整查询字符串透传给下游（vmselect）执行。
+	//
+	// 背景：PromQL Engine 在 eval BinaryExpr（两侧都是 Vector）时会做向量匹配校验，
+	// 多对多匹配（metric_a * metric_b 且两侧 label 不唯一）在 Prometheus 中报错，
+	// 但 VictoriaMetrics 可以处理。整查询下推让 vmselect 拿到原始 PromQL 完整执行，
+	// Engine 收到的已经是最终结果，BinaryExpr eval 不会再执行。
+	//
+	// 触发条件：仅在 AST 顶层节点（len(path)==0）触发，避免对子表达式重复下推。
+	if len(path) == 0 {
+		state := p.GetState()
+		reqTags := middleware.GetRequestTags(ctx)
+		filtered := FilterServerGroupsByTags(state.sgs, reqTags)
+
+		if len(filtered) == 1 {
+			sg := filtered[0]
+			queryStr := s.Expr.String()
+
+			var result storage.SeriesSet
+			isInstant := s.Start.Equal(s.End) && s.Interval == 0
+			if !isInstant {
+				// Range query
+				result = sg.QueryRange(ctx, queryStr, v1.Range{
+					Start: s.Start,
+					End:   s.End,
+					Step:  s.Interval,
+				})
+			} else {
+				// Instant query
+				result = sg.Query(ctx, queryStr, s.Start)
+			}
+
+			if err := result.Err(); err != nil {
+				logrus.Errorf("whole-query pushdown failed for sg=%s, expr=%q: %v", sg.Cfg.Name, queryStr, err)
+				// 下推失败直接返回 error，Engine populateSeries 会立即终止并传给 handler
+				return nil, fmt.Errorf("whole-query pushdown to sg=%s failed: %w", sg.Cfg.Name, err)
+			}
+
+			logrus.Infof("whole-query pushdown: expr=%q, start=%v, end=%v, interval=%v, sg=%s",
+				queryStr, s.Start, s.End, s.Interval, sg.Cfg.Name)
+
+			// 下推成功：构造合成 VectorSelector，Engine 遇到 UnexpandedSeriesSet != nil 时会跳过 querier.Select，
+			// 直接展开已有数据，BinaryExpr eval 不会执行。
+			ret := &parser.VectorSelector{}
+			ret.UnexpandedSeriesSet = result
+			return ret, nil
+		}
+	}
+	// ===== 整查询下推结束 =====
+
 	isAgg := func(node parser.Node) bool {
 		_, ok := node.(*parser.AggregateExpr)
 		return ok

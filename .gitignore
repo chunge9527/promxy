@@ -1,9 +1,12 @@
 /promxy
 cmd/promxy/promxy
 cmd/remote_write_exporter/remote_write_exporter
+cmd/promxy/__debug_bin.*
 build/*
 .idea
+.trae
 .claude
+.vscode
 /debug
 /.policy.yml
 /tmp/
@@ -11,3 +14,5 @@ build/*
 /cmd/promxy/test.yaml
 /cmd/promxy/vm.yaml
 /cmd/promxy/alert_example_dupe.rule
+/vendor/
+/bin/
