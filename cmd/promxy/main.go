@@ -545,8 +545,14 @@ func main() {
 		logrus.Fatalf("Invalid AccessLogDestination: %s", opts.AccessLogDestination)
 	}
 
-	// Create tag middleware that only applies to PromQL query API endpoints
-	tagMiddleware := middleware.NewTagParser(middleware.NewProxyHeaders(r, opts.ProxyHeaders))
+	// Create middleware chain (外→内：TagParser → ProxyHeaders → Passthrough → Router)
+	// 作者：王春
+	// 日期：2026-10-09
+	// Passthrough 放在 ProxyHeaders 内层，确保执行时 context 中已有 tags 和待转发 header
+	// 2026-10-13：传入 RoutePrefix，透传转发前剥掉，避免下游收到带前缀路径 404
+	passthrough := ps.NewPassthroughHandler(r, webOptions.RoutePrefix)
+	proxyHeaders := middleware.NewProxyHeaders(passthrough, opts.ProxyHeaders)
+	tagMiddleware := middleware.NewTagParser(proxyHeaders)
 
 	srv, err := server.CreateAndStart(opts.BindAddr, opts.LogFormat, opts.WebReadTimeout, accessLogOut, tagMiddleware, opts.WebConfigFile)
 	if err != nil {

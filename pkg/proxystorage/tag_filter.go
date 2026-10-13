@@ -47,7 +47,7 @@ func FilterServerGroupsByTags(sgs []*servergroup.ServerGroup, reqTags []string) 
 		reqTagMap[strings.ToLower(tag)] = true
 	}
 
-	logrus.Debugf("[tag] input tags: %v, total server groups: %d", reqTags, len(sgs))
+	logrus.Debugf("input tags: %v, total server groups: %d", reqTags, len(sgs))
 
 	var filtered []*servergroup.ServerGroup
 	var matchedNames []string
@@ -69,7 +69,7 @@ func FilterServerGroupsByTags(sgs []*servergroup.ServerGroup, reqTags []string) 
 		}
 	}
 
-	logrus.Infof("[tag] server groups: %d, matched: %d, matched names: %v",
+	logrus.Infof("server groups: %d, matched: %d, matched names: %v",
 		len(sgs), len(filtered), matchedNames)
 	return filtered
 }
@@ -95,7 +95,7 @@ func (t *tagFilterAPI) getFilteredMultiAPI(ctx context.Context) promclient.API {
 
 	if len(filteredAPIs) == 0 {
 		// No matching server groups, return empty API
-		logrus.Debugf("[tag] no server groups matched, returning empty API")
+		logrus.Debugf("no server groups matched, returning empty API")
 		return emptyAPI{}
 	}
 
@@ -108,7 +108,7 @@ func (t *tagFilterAPI) getFilteredMultiAPI(ctx context.Context) promclient.API {
 	// Use the same antiAffinity and other settings as the original
 	multiAPI, err := promclient.NewMultiAPI(filteredAPIs, model.TimeFromUnix(0), false, nil, len(filteredAPIs), false)
 	if err != nil {
-		logrus.Errorf("[tag] error creating filtered MultiAPI: %v", err)
+		logrus.Errorf("error creating filtered MultiAPI: %v", err)
 		return t.multiAPI
 	}
 
