@@ -62,6 +62,11 @@ func (p *ProxyStorage) NewPassthroughHandler(next http.Handler, routePrefix stri
 		if r.URL.RawPath != "" {
 			r2.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, prefix)
 		}
+		// ⑦ 剥离客户端凭证：Authorization 已存在时 BasicAuthRoundTripper
+		// 不会注入 SG 配置的 basic_auth（vendor http_config.go:851 仅在头
+		// 缺失时注入），客户端凭证会穿透到下游导致 401。删掉后由 SG
+		// Transport 链统一注入下游凭证。
+		r2.Header.Del("Authorization")
 		proxy.ServeHTTP(w, r2)
 		// 下游不可用默认 502，不兜底
 	})
